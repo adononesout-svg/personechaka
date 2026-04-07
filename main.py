@@ -206,15 +206,38 @@ async def chosen_inline_result(update: Update, context: ContextTypes.DEFAULT_TYP
 
 def main() -> None:
     if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:
-        logger.error("Заполни .env файл!")
+        logger.error("Заполни токены!")
         return
+
+    # --- 1. ФИКС ОШИБКИ PYTHON 3.14 (Event Loop) ---
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    # -----------------------------------------------
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(InlineQueryHandler(inline_query))
     application.add_handler(ChosenInlineResultHandler(chosen_inline_result))
 
-    logger.info("Бот запущен! Иди тестировать!")
-    application.run_polling()
+    # --- 2. НАСТРОЙКА ДЛЯ RENDER (WEBHOOK) ---
+    # Render автоматически передает эти переменные в нашу программу
+    RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL")
+    PORT = int(os.environ.get("PORT", "8443"))
+
+    if RENDER_EXTERNAL_URL:
+        # Если мы на Render, запускаем Webhook
+        logger.info(f"Запускаем бота на Render (Webhook mode) на порту {PORT}...")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            webhook_url=RENDER_EXTERNAL_URL # Telegram будет слать апдейты сюда
+        )
+    else:
+        # Если мы запускаем скрипт локально на ПК
+        logger.info("Запускаем локально (Polling mode)...")
+        application.run_polling()
 
 
 if __name__ == "__main__":
